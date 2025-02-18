@@ -11,7 +11,7 @@
             "runtimeExecutable": "tsx",
             "runtimeArgs": ["--inspect"],
             "args": [
-                "${workspaceFolder}/index.ts",
+                "${workspaceFolder}/src/index.ts",
                 "360",
                 "python"
             ],

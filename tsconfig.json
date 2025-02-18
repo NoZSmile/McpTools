@@ -9,8 +9,9 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "outDir": "dist"
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "src/bravemcp.ts", "src/browser.ts", "src/index.ts", "src/mcp.ts", "src/proxyGetUrl.ts"],
   "exclude": ["node_modules"]
-} 
+}
