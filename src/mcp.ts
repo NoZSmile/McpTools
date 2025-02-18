@@ -213,6 +213,24 @@ const SO_SEARCH_TOOL: Tool = {
   },
 };
 
+const NOW_TOOL: Tool = {
+  name: "now",
+  description: "获取当前时间，返回格式化的日期时间字符串。支持指定UTC时区偏移值。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      offset: {
+        type: "number",
+        description: "UTC时区偏移值（如：8表示UTC+8，-5表示UTC-5，0表示UTC），默认为8。例如：当前时间（UTC+8）：2024-01-01 14:30:45",
+        default: 8,
+        minimum: -12,
+        maximum: 14
+      }
+    },
+    required: [],
+  },
+};
+
 // —— 创建 MCP Server 实例 ——
 
 const server = new Server(
@@ -497,6 +515,28 @@ export async function search360(query: string, count: number = 10): Promise<stri
   }
 }
 
+/**
+ * 获取当前时间的格式化字符串
+ */
+export function getNowTime(offset: number = 8): string {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const targetTime = new Date(utc + (3600000 * offset));
+  
+  const timeStr = targetTime.toLocaleString('zh-CN', { 
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  const sign = offset >= 0 ? '+' : '';
+  return `当前时间（UTC${sign}${offset}）：${timeStr}`;
+}
+
 // —— 注册 MCP 工具列表 ——
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -509,6 +549,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     BROWSE_TOOL,
     BAIDU_SEARCH_TOOL,
     SO_SEARCH_TOOL,
+    NOW_TOOL,
   ],
 }));
 
@@ -572,6 +613,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "360": {
         const { query, count = 10 } = args as { query: string; count?: number };
         results = await search360(query, count);
+        break;
+      }
+      case "now": {
+        const { offset = 8 } = args as { offset?: number };
+        results = getNowTime(offset);
         break;
       }
       default: {
