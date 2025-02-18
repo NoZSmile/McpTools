@@ -12,7 +12,7 @@
             "runtimeArgs": ["--inspect"],
             "args": [
                 "${workspaceFolder}/index.ts",
-                "google",
+                "360",
                 "python"
             ],
             "cwd": "${workspaceFolder}",

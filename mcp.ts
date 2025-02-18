@@ -4,6 +4,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as cheerio from "cheerio";
 import { proxyGetUrl } from "./proxyGetUrl";
+import browser from './browser';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -152,6 +153,66 @@ const GOOGLE_SEARCH_TOOL: Tool = {
   },
 };
 
+const BROWSE_TOOL: Tool = {
+  name: "browse",
+  description: "使用浏览器方式获取网页内容，支持动态渲染的页面。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "目标网页URL（必须包含http/https协议）",
+      },
+      timeout: {
+        type: "number",
+        description: "请求超时时间（毫秒，默认30000）",
+        default: 30000,
+      },
+    },
+    required: ["url"],
+  },
+};
+
+const BAIDU_SEARCH_TOOL: Tool = {
+  name: "baidu",
+  description: "使用百度搜索引擎获取网页搜索结果。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "搜索关键词",
+      },
+      count: {
+        type: "number",
+        description: "返回结果数量 (1-50，默认10)",
+        default: 10,
+      }
+    },
+    required: ["query"],
+  },
+};
+
+const SO_SEARCH_TOOL: Tool = {
+  name: "360",
+  description: "使用360搜索引擎获取网页搜索结果。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "搜索关键词",
+      },
+      count: {
+        type: "number",
+        description: "返回结果数量 (1-50，默认10)",
+        default: 10,
+      }
+    },
+    required: ["query"],
+  },
+};
+
 // —— 创建 MCP Server 实例 ——
 
 const server = new Server(
@@ -294,18 +355,146 @@ export async function searchGoogle(query: string, count: number = 10): Promise<s
   const url = `https://www.google.com/search?q=${encodeURIComponent(
     query
   )}&num=${count}`;
-  const html = await fetchHTML(url, 10000);
-  const $ = cheerio.load(html);
-  const results = $("div.g")
-    .map((i: number, el: any) => {
-      const title = $(el).find("h3").text().trim();
-      const link = $(el).find("a").attr("href") || "";
-      const snippet = $(el).find(".IsZvec").text().trim();
-      return `${i + 1}. [${title}](${link})\n${snippet}`;
-    })
-    .get()
-    .join("\n\n");
-  return results || "未找到Google搜索结果";
+  
+  try {
+    const html = await browser.getPageContent(url);
+    const $ = cheerio.load(html);
+    
+    // 更新选择器以适应可能的结构变化
+    const results = $("div.g, div[data-hveid]")
+      .map((i: number, el: any) => {
+        const title = $(el).find("h3, a > div").first().text().trim();
+        const link = $(el).find("a").first().attr("href") || "";
+        const snippet = $(el).find("div.VwiC3b, div[data-snf], div[data-sncf]").text().trim();
+        
+        // 只返回有效的搜索结果
+        if (title && link && snippet && link.startsWith('http')) {
+          return `${i + 1}. [${title}](${link})\n${snippet}`;
+        }
+        return null;
+      })
+      .get()
+      .filter(Boolean) // 过滤掉空值
+      .slice(0, count) // 限制结果数量
+      .join("\n\n");
+      
+    return results || "未找到Google搜索结果";
+  } catch (error) {
+    console.error('Google搜索出错:', error);
+    throw new Error(`Google搜索失败: ${error}`);
+  } finally {
+    // 确保关闭浏览器实例
+    //await browser.close();
+  }
+}
+
+/**
+ * 使用浏览器方式获取网页内容
+ */
+export async function browsePage(url: string, timeout: number = 30000): Promise<string> {
+  try {
+    const content = await browser.getPageContent(url);
+    return content;
+  } catch (error) {
+    console.error('浏览器访问出错:', error);
+    throw new Error(`浏览器访问失败: ${error}`);
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * 使用百度搜索并解析搜索结果
+ */
+export async function searchBaidu(query: string, count: number = 10): Promise<string> {
+  const url = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${count}`;
+  
+  try {
+    const html = await browser.getPageContent(url);
+    const $ = cheerio.load(html);
+    
+    // 解析百度搜索结果
+    const results = $("div.result, div.c-container")
+      .map((i: number, el: any) => {
+        const title = $(el).find("h3.t, .c-title").text().trim();
+        const link = $(el).find("h3.t a, .c-title a").attr("href") || "";
+        const snippet = $(el).find(".c-abstract, .content-abstract").text().trim();
+        
+        // 只返回有效的搜索结果
+        if (title && link && snippet) {
+          return `${i + 1}. [${title}](${link})\n${snippet}`;
+        }
+        return null;
+      })
+      .get()
+      .filter(Boolean) // 过滤掉空值
+      .slice(0, count) // 限制结果数量
+      .join("\n\n");
+      
+    return results || "未找到百度搜索结果";
+  } catch (error) {
+    console.error('百度搜索出错:', error);
+    throw new Error(`百度搜索失败: ${error}`);
+  }
+}
+
+/**
+ * 使用360搜索并解析搜索结果
+ */
+export async function search360(query: string, count: number = 10): Promise<string> {
+  const url = `https://www.so.com/s?q=${encodeURIComponent(query)}&pn=1&ps=${count}`;
+  
+  try {
+    const html = await browser.getPageContent(url);
+    const $ = cheerio.load(html);
+    
+    // 解析360搜索结果
+    const results = $(".result li")
+      .map((i: number, el: any) => {
+        // 提取标题和链接
+        const titleEl = $(el).find("h3");
+        const title = titleEl.text().trim();
+        const link = titleEl.find("a").attr("href") || "";
+        
+        // 提取摘要，尝试多个可能的选择器
+        let snippet = "";
+        const possibleSnippetSelectors = [
+          "p.res-desc", // 普通结果
+          ".res-rich-content", // 富文本结果
+          ".res-comm-con" // 通用结果
+        ];
+        
+        for (const selector of possibleSnippetSelectors) {
+          const text = $(el).find(selector).text().trim();
+          if (text) {
+            snippet = text;
+            break;
+          }
+        }
+        
+        console.error(`调试: 找到结果 #${i + 1}:`, { title, link, snippet });
+        
+        // 只返回有效的搜索结果
+        if (title && (link || snippet)) {
+          return `${i + 1}. [${title}](${link})\n${snippet}`;
+        }
+        return null;
+      })
+      .get()
+      .filter(Boolean) // 过滤掉空值
+      .slice(0, count) // 限制结果数量
+      .join("\n\n");
+      
+    if (!results) {
+      console.error('调试: DOM结构:', $('.result li').length, '个结果元素');
+      return "未找到360搜索结果";
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('360搜索出错:', error);
+    throw new Error(`360搜索失败: ${error}`);
+  }
 }
 
 // —— 注册 MCP 工具列表 ——
@@ -317,6 +506,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     CONTENT_EXTRACT_TOOL,
     BING_SEARCH_TOOL,
     GOOGLE_SEARCH_TOOL,
+    BROWSE_TOOL,
+    BAIDU_SEARCH_TOOL,
+    SO_SEARCH_TOOL,
   ],
 }));
 
@@ -367,6 +559,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         results = await searchGoogle(query, count);
         break;
       }
+      case "browse": {
+        const { url, timeout = 30000 } = args as { url: string; timeout?: number };
+        results = await browsePage(url, timeout);
+        break;
+      }
+      case "baidu": {
+        const { query, count = 10 } = args as { query: string; count?: number };
+        results = await searchBaidu(query, count);
+        break;
+      }
+      case "360": {
+        const { query, count = 10 } = args as { query: string; count?: number };
+        results = await search360(query, count);
+        break;
+      }
       default: {
         results = `未知工具: ${name}`;
         return {
@@ -409,13 +616,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // —— 启动 MCP Server ——
 
-async function runServer() {
+export async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("MCP Server 正在通过 stdio 运行");
 }
-
-runServer().catch((error) => {
-  console.error("启动服务器时发生致命错误:", error);
-  process.exit(1);
-});
