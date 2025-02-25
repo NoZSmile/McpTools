@@ -1,0 +1,5 @@
+# 规则
+- 将每次修改的内容，按序号添加补充到/doc/history.md文件中 
+- 遵循/doc/prompt.md中的需求 
+- 使用适合powershell的终端命令执行格式
+- 使用中文回答
