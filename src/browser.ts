@@ -115,52 +115,93 @@ export class Browser {
     }
 
     async getPageContent(url: string): Promise<string> {
+        // 自动初始化
         if (!this.browser) {
             await this.init();
         }
 
-        const page = await this.browser!.newPage();
-        
-        try {
-            // 设置页面超时
-            await page.setDefaultNavigationTimeout(this.options.timeout || 30000);
-            
-            // 设置User-Agent
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            
-            // 访问页面，使用更快的加载事件
-            await page.goto(url, {
-                waitUntil: 'domcontentloaded', // 改为domcontentloaded，更快
-            });
+        let attempt = 0;
+        const maxAttempts = 3;
 
-            // 等待页面内容加载
-            await Promise.race([
-                page.waitForSelector('body'),
-                new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('等待body超时')), 5000)
-                )
-            ]);
-            
-            // 检查是否需要额外等待
-            const needsExtraWait = url.includes('google.com') || 
-                                 url.includes('baidu.com') || 
-                                 url.includes('so.com');
-            
-            if (needsExtraWait) {
-                // 对特定网站等待动态内容
-                await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1000)));
+        while (attempt < maxAttempts) {
+            let page = null;
+            try {
+                // 检查浏览器连接状态，如果断开则尝试重新连接
+                if (!this.browser!.connected) {
+                    console.error('浏览器连接已断开，尝试重新连接...');
+                    await this.close();
+                    await this.init();
+                }
+
+                page = await this.browser!.newPage();
+                
+                // 设置页面超时
+                await page.setDefaultNavigationTimeout(this.options.timeout || 30000);
+                
+                // 设置User-Agent
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                
+                // 访问页面，使用更快的加载事件
+                await page.goto(url, {
+                    waitUntil: 'domcontentloaded', // 改为domcontentloaded，更快
+                });
+
+                // 等待页面内容加载
+                await Promise.race([
+                    page.waitForSelector('body'),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('等待body超时')), 5000)
+                    )
+                ]);
+                
+                // 检查是否需要额外等待
+                const needsExtraWait = url.includes('google.com') || 
+                                    url.includes('baidu.com') || 
+                                    url.includes('so.com');
+                
+                if (needsExtraWait) {
+                    // 对特定网站等待动态内容
+                    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1000)));
+                }
+
+                // 获取页面内容
+                const content = await page.content();
+                
+                return content;
+            } catch (error: any) {
+                attempt++;
+                console.error(`获取页面内容失败(尝试 ${attempt}/${maxAttempts}):`, error);
+                
+                // 如果是连接问题，尝试重新初始化浏览器
+                if (error.toString().includes('Protocol error') || 
+                    error.toString().includes('Connection closed') ||
+                    error.toString().includes('Target closed') ||
+                    !this.browser?.connected) {
+                    
+                    console.error('检测到浏览器连接问题，尝试重新初始化...');
+                    await this.close();
+                    await this.init();
+                }
+                
+                if (attempt >= maxAttempts) {
+                    throw new Error(`获取页面失败(${maxAttempts}次尝试后): ${error}`);
+                }
+                
+                // 等待一段时间再重试
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } finally {
+                // 关闭页面
+                if (page) {
+                    try {
+                        await page.close();
+                    } catch (e) {
+                        console.error('关闭页面失败:', e);
+                    }
+                }
             }
-
-            // 获取页面内容
-            const content = await page.content();
-            
-            return content;
-        } catch (error) {
-            throw new Error(`Failed to get page content: ${error}`);
-        } finally {
-            // 只关闭页面，不关闭浏览器
-            await page.close();
         }
+        
+        throw new Error('获取页面内容失败: 超过最大重试次数');
     }
 
     async close() {

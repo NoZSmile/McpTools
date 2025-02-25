@@ -3,6 +3,7 @@ MCP Proxy Search Multi Tools
 
 # 项目描述
 一个基于TypeScript开发的多功能MCP工具，支持代理及浏览器模式，可进行URL抓取、多搜索引擎搜索和内容解析。支持多种搜索引擎，包括Brave、Bing、Google、百度和360。通过MCP (Model Context Protocol) 协议提供服务，可被其他应用程序调用。
+项目支持命令行调用和SSE网络调用双模式。
 
 # MCP工具列表
 - brave_web_search - Brave搜索引擎查询

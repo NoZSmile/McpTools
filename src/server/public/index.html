@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP工具集 - SSE客户端示例</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .control-panel {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .result-panel {
+            flex: 2;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 600px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 150px;
+            font-family: monospace;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #eventLog {
+            height: 550px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .event {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 4px;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        .event.data {
+            background-color: #e2f0ff;
+            border-left: 4px solid #0d6efd;
+        }
+        .event.error {
+            background-color: #ffeaea;
+            border-left: 4px solid #dc3545;
+        }
+        .event.message {
+            background-color: #e6f3e6;
+            border-left: 4px solid #28a745;
+        }
+        .time-label {
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .result-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #0d6efd;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 5px 0 0 0;
+            overflow-x: auto;
+            font-size: 14px;
+            border: 1px solid #e9ecef;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>MCP工具集 - SSE客户端示例</h1>
+    <p>这是一个演示如何使用Server-Sent Events连接到MCP工具集的示例页面。</p>
+    
+    <div class="container">
+        <div class="control-panel">
+            <h2>控制面板</h2>
+            
+            <div class="form-group">
+                <label for="toolSelect">选择工具：</label>
+                <select id="toolSelect">
+                    <option value="brave_web_search">Brave搜索引擎查询</option>
+                    <option value="fetch">获取网页原始HTML内容</option>
+                    <option value="fetchContent">提取网页正文内容</option>
+                    <option value="bing">Bing搜索引擎查询</option>
+                    <option value="google">Google搜索引擎查询</option>
+                    <option value="browse">浏览器模式获取网页内容</option>
+                    <option value="baidu">百度搜索引擎查询</option>
+                    <option value="360">360搜索引擎查询</option>
+                    <option value="now">获取当前格式化时间</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="paramInput">参数 (JSON格式)：</label>
+                <textarea id="paramInput">{
+  "query": "TypeScript SSE 实现"
+}</textarea>
+            </div>
+            
+            <button id="connectBtn">连接</button>
+            <button id="disconnectBtn" disabled>断开连接</button>
+            <button id="executeBtn" disabled>执行</button>
+            
+            <div id="connectionStatus" class="status disconnected">
+                状态: 未连接
+            </div>
+        </div>
+        
+        <div class="result-panel">
+            <h2>结果</h2>
+            <div id="eventLog"></div>
+        </div>
+    </div>
+    
+    <script>
+        // DOM元素
+        const toolSelect = document.getElementById('toolSelect');
+        const paramInput = document.getElementById('paramInput');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const executeBtn = document.getElementById('executeBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const eventLog = document.getElementById('eventLog');
+        
+        // SSE事件源
+        let eventSource = null;
+        // 存储客户端ID
+        let clientId = null;
+        
+        // 连接到SSE服务器
+        connectBtn.addEventListener('click', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            eventSource = new EventSource('/events');
+            
+            // 连接打开
+            eventSource.onopen = () => {
+                logEvent('连接已建立', 'message');
+                connectionStatus.textContent = '状态: 已连接';
+                connectionStatus.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                executeBtn.disabled = false;
+            };
+            
+            // 接收消息
+            eventSource.onmessage = (event) => {
+                logEvent(`收到消息: ${event.data}`, 'data');
+            };
+            
+            // 错误处理
+            eventSource.onerror = (error) => {
+                logEvent('连接错误或关闭', 'error');
+                connectionStatus.textContent = '状态: 连接错误';
+                connectionStatus.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                executeBtn.disabled = true;
+                clientId = null; // 重置客户端ID
+            };
+            
+            // 监听工具特定事件
+            eventSource.addEventListener('tool_response', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    logEvent(`工具响应: ${JSON.stringify(data, null, 2)}`, 'data');
+                } catch (e) {
+                    logEvent(`工具响应 (原始): ${event.data}`, 'data');
+                }
+            });
+            
+            // 监听开始事件
+            eventSource.addEventListener('start', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    logEvent(`开始执行: ${data.tool} (ID: ${data.requestId})`, 'message');
+                } catch (e) {
+                    logEvent(`解析开始事件失败: ${e.message}`, 'error');
+                }
+            });
+            
+            // 监听完成事件
+            eventSource.addEventListener('complete', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    logEvent(`执行完成: ${data.tool} (ID: ${data.requestId})`, 'message');
+                    logEvent(`结果: ${JSON.stringify(data.result, null, 2)}`, 'data');
+                } catch (e) {
+                    logEvent(`解析完成事件失败: ${e.message}`, 'error');
+                }
+            });
+            
+            // 监听错误事件
+            eventSource.addEventListener('error', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    logEvent(`执行错误: ${data.tool} (ID: ${data.requestId}) - ${data.error}`, 'error');
+                } catch (e) {
+                    logEvent(`解析错误事件失败: ${e.message}`, 'error');
+                }
+            });
+            
+            // 监听错误事件
+            eventSource.addEventListener('error_event', (event) => {
+                logEvent(`错误: ${event.data}`, 'error');
+            });
+            
+            // 监听连接事件，获取客户端ID
+            eventSource.addEventListener('connection', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    clientId = data.clientId;
+                    logEvent(`已获取客户端ID: ${clientId}`, 'message');
+                } catch (e) {
+                    logEvent(`解析客户端ID失败: ${e.message}`, 'error');
+                }
+            });
+        });
+        
+        // 断开连接
+        disconnectBtn.addEventListener('click', () => {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                
+                logEvent('连接已关闭', 'message');
+                connectionStatus.textContent = '状态: 未连接';
+                connectionStatus.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                executeBtn.disabled = true;
+                clientId = null; // 重置客户端ID
+            }
+        });
+        
+        // 执行工具
+        executeBtn.addEventListener('click', () => {
+            if (!clientId) {
+                logEvent('错误: 未获取到客户端ID，请确保已连接到服务器', 'error');
+                return;
+            }
+            
+            const tool = toolSelect.value;
+            let params;
+            
+            try {
+                params = JSON.parse(paramInput.value);
+            } catch (e) {
+                logEvent(`参数解析错误: ${e.message}`, 'error');
+                return;
+            }
+            
+            // 发送工具执行请求，clientId作为查询参数传递
+            fetch(`/api/${tool}?clientId=${clientId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(params)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`请求失败: ${response.status} ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                logEvent(`请求已发送，ID: ${data.requestId || 'unknown'}`, 'message');
+            })
+            .catch(error => {
+                logEvent(`请求错误: ${error.message}`, 'error');
+            });
+        });
+        
+        // 工具选择变化时更新默认参数
+        toolSelect.addEventListener('change', () => {
+            const tool = toolSelect.value;
+            let defaultParams = {};
+            
+            switch (tool) {
+                case 'brave_web_search':
+                case 'bing':
+                case 'google':
+                case 'baidu':
+                case '360':
+                    defaultParams = { query: "TypeScript SSE 实现", count: 5 };
+                    break;
+                case 'fetch':
+                case 'fetchContent':
+                case 'browse':
+                    defaultParams = { url: "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events" };
+                    break;
+                case 'now':
+                    defaultParams = { offset: 8 };
+                    break;
+            }
+            
+            paramInput.value = JSON.stringify(defaultParams, null, 2);
+        });
+        
+        // 记录事件到日志
+        function logEvent(message, type) {
+            const event = document.createElement('div');
+            event.className = `event ${type}`;
+            
+            // 格式化时间
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString() + '.' + String(now.getMilliseconds()).padStart(3, '0');
+            
+            // 如果消息是JSON格式的，进行格式化显示
+            if (type === 'data' && message.startsWith('结果: ')) {
+                const jsonPart = message.substring(4);  // 截取"结果: "之后的部分
+                try {
+                    // 尝试解析JSON并美化输出
+                    const jsonObj = JSON.parse(jsonPart);
+                    
+                    // 创建时间标签
+                    const timeLabel = document.createElement('div');
+                    timeLabel.className = 'time-label';
+                    timeLabel.textContent = `[${timeStr}]`;
+                    event.appendChild(timeLabel);
+                    
+                    // 创建结果标题
+                    const resultTitle = document.createElement('div');
+                    resultTitle.className = 'result-title';
+                    resultTitle.textContent = '结果:';
+                    event.appendChild(resultTitle);
+                    
+                    // 创建格式化的JSON显示
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(jsonObj, null, 2);
+                    event.appendChild(pre);
+                } catch (e) {
+                    // 如果解析失败，使用普通显示
+                    event.textContent = `[${timeStr}] ${message}`;
+                }
+            } else {
+                event.textContent = `[${timeStr}] ${message}`;
+            }
+            
+            eventLog.appendChild(event);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+    </script>
+</body>
+</html>

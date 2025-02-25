@@ -1,5 +1,7 @@
 import { performWebSearch, fetchHTML, extractContent, searchBing, searchGoogle, browsePage, searchBaidu, search360, runServer } from './mcp';
 import browser from './browser';
+import config from './config';
+import { startSseServer } from './server';
 // URL是全局对象，不需要导入
 
 const COMMANDS = {
@@ -57,6 +59,12 @@ const COMMANDS = {
     usage: 'startmcp',
     example: 'startmcp'
   },
+  sse: {
+    name: 'sse',
+    description: '启动 SSE Server 模式',
+    usage: 'sse [--port=端口号]',
+    example: 'sse --port=3000'
+  },
   exit: {
     name: 'exit',
     description: '关闭浏览器并退出程序',
@@ -83,25 +91,47 @@ const command = process.argv[2]?.toLowerCase();
 const query = process.argv[3];
 
 if (!command) {
-  showHelp();
-  process.exit(1);
-}
-
-if (!Object.keys(COMMANDS).includes(command)) {
+  // 检查是否使用了--sse命令行参数
+  if (config.sse.enabled) {
+    console.log('正在启动 SSE 服务器模式...');
+    startSseServer().catch(error => {
+      console.error('SSE 服务器启动失败:', error);
+      process.exit(1);
+    });
+  } else {
+    showHelp();
+    process.exit(1);
+  }
+} else if (command === 'sse') {
+  console.log(`正在启动 SSE 服务器，端口: ${config.sse.port}...`);
+  startSseServer().catch(error => {
+    console.error('SSE 服务器启动失败:', error);
+    process.exit(1);
+  });
+} else if (!Object.keys(COMMANDS).includes(command)) {
   console.error(`未知命令: ${command}`);
   console.log('\n可用命令:', Object.keys(COMMANDS).join(', '));
   process.exit(1);
-}
-
-if (command !== 'exit' && command !== 'startmcp' && !query) {
+} else if (command !== 'exit' && command !== 'startmcp' && !query) {
   showHelp();
   process.exit(1);
-}
+} else {
+  // 检查 Brave API Key
+  if (command === 'web' && !process.env.BRAVE_API_KEY) {
+    console.error('错误: 使用 Brave 搜索需要设置 BRAVE_API_KEY 环境变量');
+    process.exit(1);
+  }
 
-// 检查 Brave API Key
-if (command === 'web' && !process.env.BRAVE_API_KEY) {
-  console.error('错误: 使用 Brave 搜索需要设置 BRAVE_API_KEY 环境变量');
-  process.exit(1);
+  // 处理命令
+  handleCommand(command, query).catch(async (error: unknown) => {
+    if (error instanceof Error) {
+      console.error('错误:', error.message);
+    } else {
+      console.error('发生未知错误');
+    }
+    await browser.close();
+    process.exit(1);
+  });
 }
 
 // 添加进程退出时的清理
@@ -116,8 +146,8 @@ process.on('SIGINT', async () => {
   process.exit();
 });
 
-// 发起请求
-(async () => {
+// 处理命令的函数
+async function handleCommand(command: string, query: string) {
   try {
     switch (command) {
       case 'brave': {
@@ -195,6 +225,6 @@ process.on('SIGINT', async () => {
     await browser.close();
     process.exit(1);
   }
-})();
+}
 
 

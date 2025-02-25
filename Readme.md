@@ -22,6 +22,9 @@
   - 代理支持 (HTTP/SOCKS)
   - 请求速率限制
   - 浏览器自动化
+- 🔄 双模式支持
+  - 命令行模式
+  - SSE (Server-Sent Events) 网络模式
 
 ## 🚀 快速开始
 
@@ -66,6 +69,16 @@ tsx index.ts brave "TypeScript教程"
 # Bing搜索
 tsx index.ts bing "TypeScript教程"
 
+# SSE模式
+# 启动SSE服务（默认端口3000）
+tsx index.ts sse
+
+# 指定端口启动SSE服务
+tsx index.ts sse --port 8080
+
+# 指定配置文件
+tsx index.ts sse --config ./myconfig.json
+
 ```
 
 ## 📖 详细命令
@@ -81,6 +94,7 @@ tsx index.ts bing "TypeScript教程"
 | baidu | 百度搜索 | `baidu "Python入门"` |
 | 360 | 360搜索 | `360 "Linux命令"` |
 | startmcp | 启动MCP Server模式 | `startmcp` |
+| sse | 启动SSE服务器模式 | `sse --port 3000` |
 
 ## ⚙️ 配置说明
 
@@ -126,6 +140,72 @@ const options = {
   headless: 'new',
   args: ['--no-sandbox']
 }
+```
+
+### SSE服务配置
+配置文件示例 (config.json):
+```json
+{
+  "sse": {
+    "port": 3000,
+    "host": "localhost",
+    "cors": {
+      "origin": "*"
+    },
+    "timeout": 30000,
+    "heartbeatInterval": 15000
+  }
+}
+```
+
+## 🌐 SSE模式使用指南
+
+SSE (Server-Sent Events) 模式允许通过HTTP连接实时接收工具执行结果。
+
+### 启动服务
+```bash
+# 默认配置启动
+tsx index.ts sse
+
+# 指定端口
+tsx index.ts sse --port 8080
+```
+
+### 客户端示例
+项目默认提供了一个简单的前端页面作为示例，启动服务后访问：
+```
+http://localhost:3000/
+```
+
+### API端点
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/events` | GET | SSE连接端点 |
+| `/api/:tool` | POST | 工具调用端点 |
+
+### JavaScript客户端示例代码
+```javascript
+// 连接到SSE服务器
+const eventSource = new EventSource('http://localhost:3000/events');
+
+// 监听事件
+eventSource.onmessage = (event) => {
+  console.log('收到消息:', event.data);
+};
+
+// 监听工具响应
+eventSource.addEventListener('tool_response', (event) => {
+  console.log('工具响应:', JSON.parse(event.data));
+});
+
+// 调用工具示例
+fetch('http://localhost:3000/api/brave_web_search', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: 'TypeScript SSE' })
+})
+.then(response => response.json())
+.then(data => console.log('请求已发送，ID:', data.requestId));
 ```
 
 ## 🤝 贡献指南

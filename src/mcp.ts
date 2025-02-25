@@ -410,15 +410,22 @@ export async function searchGoogle(query: string, count: number = 10): Promise<s
  * 使用浏览器方式获取网页内容
  */
 export async function browsePage(url: string, timeout: number = 30000): Promise<string> {
-  try {
-    const content = await browser.getPageContent(url);
-    return content;
-  } catch (error) {
-    console.error('浏览器访问出错:', error);
-    throw new Error(`浏览器访问失败: ${error}`);
-  } finally {
-    await browser.close();
+  let retries = 2;
+  while (retries >= 0) {
+    try {
+      const content = await browser.getPageContent(url);
+      return content;
+    } catch (error) {
+      console.error('浏览器访问出错:', error);
+      if (retries <= 0) {
+        throw new Error(`浏览器访问失败: ${error}`);
+      }
+      console.error(`剩余尝试次数: ${retries}, 1秒后重试...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries--;
+    }
   }
+  throw new Error('浏览器访问失败: 超过最大重试次数');
 }
 
 /**
